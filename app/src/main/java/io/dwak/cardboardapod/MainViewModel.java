@@ -19,12 +19,20 @@ public class MainViewModel {
     private SimpleDateFormat mSimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd");
     private PublishSubject<ApodImage> mSubject = PublishSubject.create();
     private boolean mFirstImage = true;
+    private final SpaceService mSpaceService;
 
     public MainViewModel() {
         mService = new RestAdapter.Builder().setConverter(new GsonConverter(new Gson()))
                                             .setLogLevel(RestAdapter.LogLevel.FULL)
                                             .setEndpoint("https://api.nasa.gov")
                                             .build().create(ApodService.class);
+
+        mSpaceService = new RestAdapter.Builder()
+                .setConverter(new GsonConverter(new Gson()))
+                .setLogLevel(RestAdapter.LogLevel.FULL)
+                .setEndpoint("https://space-image-viewer.firebaseio.com/.json")
+                .build().create(SpaceService.class);
+
         mApodDate = new Date();
     }
 
@@ -41,6 +49,12 @@ public class MainViewModel {
                 .subscribeOn(Schedulers.io())
                 .subscribe(mSubject::onNext);
         mFirstImage = false;
+    }
+
+    void postImage(String url){
+        mSpaceService.sendImage(new SpaceServiceImage(url))
+                .subscribe(s -> {
+                });
     }
 
     Observable<ApodImage> subscribe(){

@@ -2,24 +2,30 @@ package io.dwak.cardboardapod;
 
 import android.app.Activity;
 import android.databinding.DataBindingUtil;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.support.v4.util.Pair;
+import android.util.Log;
 import android.view.View;
 
 import com.bumptech.glide.Glide;
 
 import io.dwak.cardboardapod.databinding.MainActivityBinding;
-import io.dwak.cardboardapod.util.SystemUiHider;
 import rx.Subscriber;
 import rx.android.schedulers.AndroidSchedulers;
+import rx.android.view.ViewObservable;
 import rx.schedulers.Schedulers;
+import rx.subjects.PublishSubject;
 
-/**
- * An example full-screen activity that shows and hides the system UI (i.e.
- * status bar and navigation/system bar) with user interaction.
- *
- * @see SystemUiHider
- */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements SensorEventListener {
+
+    private SensorManager mSensorManager;
+    private PublishSubject<Pair<Float, Float>> mGyroSubject = PublishSubject.create();
+    private float translationX = 0.0f;
+    private float translationY = 0.0f;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,6 +38,7 @@ public class MainActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_FULLSCREEN // hide status bar
                         | View.SYSTEM_UI_FLAG_IMMERSIVE);
         MainActivityBinding binding = DataBindingUtil.setContentView(this, R.layout.activity_main);
+        mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         MainViewModel mainViewModel = new MainViewModel();
         mainViewModel.subscribe()
                      .subscribeOn(Schedulers.io())
@@ -49,9 +56,9 @@ public class MainActivity extends Activity {
 
                          @Override
                          public void onNext(ApodImage apodImage) {
-                             if(apodImage.url.contains("png")
+                             if (apodImage.url.contains("png")
                                      || apodImage.url.contains("bmp")
-                                     || apodImage.url.contains("jpg")){
+                                     || apodImage.url.contains("jpg")) {
                                  Glide.with(MainActivity.this)
                                       .load(apodImage.url)
                                       .fitCenter()
@@ -60,18 +67,72 @@ public class MainActivity extends Activity {
                                  Glide.with(MainActivity.this)
                                       .load(apodImage.url)
                                       .into(binding.rightImage);
+                                 mainViewModel.postImage(apodImage.url);
                              }
                              else {
                                  mainViewModel.getImage();
                              }
                          }
                      });
-
-
         mainViewModel.getImage();
-        // Set up an instance of SystemUiHider to control the system UI for
-        // this activity.
+        ViewObservable.clicks(binding.clickInterceptor)
+                      .subscribe(onClickEvent -> {
+                          mainViewModel.getImage();
+                      });
 
-        binding.clickInterceptor.setOnClickListener(v -> mainViewModel.getImage());
+        mGyroSubject.asObservable().subscribeOn(Schedulers.immediate())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(new Subscriber<Pair<Float, Float>>() {
+                        @Override
+                        public void onCompleted() {
+
+                        }
+
+                        @Override
+                        public void onError(Throwable e) {
+
+                        }
+
+                        @Override
+                        public void onNext(Pair<Float, Float> xyPair) {
+                            Log.d("WDGW", xyPair.first + " " + xyPair.second);
+//                        binding.leftImage.animate().setInterpolator(new LinearInterpolator()).translationY(-xyPair.second);
+//                        binding.leftImage.animate().setInterpolator(new LinearInterpolator()).translationX(xyPair.first);
+//
+//                        binding.rightImage.animate().setInterpolator(new LinearInterpolator()).translationY(-xyPair.second);
+//                        binding.rightImage.animate().setInterpolator(new LinearInterpolator()).translationX(xyPair.first);
+                        }
+                    });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Register this class as a listener for the accelerometer sensor
+        mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR),
+                                        SensorManager.SENSOR_DELAY_NORMAL);
+    }
+
+    @Override
+    protected void onStop() {
+        // Unregister the listener
+        mSensorManager.unregisterListener(this);
+        super.onStop();
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_GAME_ROTATION_VECTOR) {
+            int someNumber = 500;
+            float xChange = someNumber * event.values[0];
+            //values[2] can be -90 to 90
+            float yChange = someNumber * 2 * event.values[1];
+            mGyroSubject.onNext(new Pair<>(xChange, yChange));
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
     }
 }
